@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { KeyboardControls, PointerLockControls, useKeyboardControls } from '@react-three/drei';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import {
+  KeyboardControls,
+  PointerLockControls,
+  useAnimations,
+  useGLTF,
+  useKeyboardControls,
+} from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import {
   CapsuleCollider,
@@ -7,7 +13,17 @@ import {
   RigidBody,
   useRapier,
 } from '@react-three/rapier';
-import { Vector3 } from 'three';
+import {
+  AnimationAction,
+  LoopOnce,
+  LoopRepeat,
+  Vector3,
+  type Group,
+  type Object3D,
+} from 'three';
+import { SkeletonUtils } from 'three-stdlib';
+
+type MovementState = 'idle' | 'run' | 'jump';
 
 type ControlName =
   | 'forward'
@@ -26,11 +42,133 @@ const VAULT_FORWARD_IMPULSE = 3;
 const VAULT_UP_IMPULSE = 3.5;
 const CAMERA_HEIGHT_OFFSET = 0.4;
 const CAMERA_FOLLOW_SMOOTHNESS = 12;
+const AVATAR_HEIGHT_OFFSET = -(HALF_HEIGHT + RADIUS);
+
+const IDLE_CLIP_NAMES = ['Idle', 'idle', 'Armature|Idle', 'Armature|mixamo.com|Layer0'];
+const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'Jog', 'Armature|Run'];
+const JUMP_CLIP_NAMES = ['Jump', 'jump', 'Armature|Jump'];
+
+type PlayerAvatarProps = {
+  movementState: MovementState;
+  groupRef: MutableRefObject<Group | null>;
+};
+
+function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
+  const { scene, animations } = useGLTF('/models/andrew.glb');
+  const clonedScene = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const { actions, mixer } = useAnimations(animations, clonedScene);
+  const currentAction = useRef<AnimationAction | null>(null);
+
+  const resolveAction = (
+    candidates: readonly string[],
+    allowFallback = true,
+  ): AnimationAction | undefined => {
+    if (!actions) {
+      return undefined;
+    }
+
+    for (const name of candidates) {
+      const action = actions[name];
+      if (action) {
+        return action;
+      }
+    }
+
+    if (!allowFallback) {
+      return undefined;
+    }
+
+    const availableActions = Object.values(actions).filter(
+      (action): action is AnimationAction => Boolean(action),
+    );
+
+    return availableActions[0];
+  };
+
+  useEffect(() => {
+    clonedScene.traverse((object: Object3D) => {
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+  }, [clonedScene]);
+
+  useEffect(() => {
+    return () => {
+      mixer?.stopAllAction();
+    };
+  }, [mixer]);
+
+  useEffect(() => {
+    if (!actions) {
+      return;
+    }
+
+    let nextAction: AnimationAction | undefined;
+
+    switch (movementState) {
+      case 'idle':
+        nextAction = resolveAction(IDLE_CLIP_NAMES);
+        if (nextAction) {
+          nextAction.setLoop(LoopRepeat, Infinity);
+          nextAction.clampWhenFinished = false;
+        }
+        break;
+      case 'run':
+        nextAction = resolveAction(RUN_CLIP_NAMES);
+        if (nextAction) {
+          nextAction.setLoop(LoopRepeat, Infinity);
+          nextAction.clampWhenFinished = false;
+        }
+        break;
+      case 'jump':
+        nextAction = resolveAction(JUMP_CLIP_NAMES, false);
+        if (nextAction) {
+          nextAction.reset();
+          nextAction.setLoop(LoopOnce, 1);
+          nextAction.clampWhenFinished = true;
+        }
+        break;
+      default:
+        break;
+    }
+
+    if (!nextAction) {
+      return;
+    }
+
+    const previous = currentAction.current;
+
+    if (previous !== nextAction) {
+      nextAction.reset();
+      nextAction.play();
+      if (previous) {
+        previous.crossFadeTo(nextAction, 0.2, false);
+      }
+      currentAction.current = nextAction;
+    } else if (movementState === 'jump') {
+      // Restart the jump animation whenever we trigger another jump.
+      nextAction.reset().play();
+    }
+  }, [actions, movementState]);
+
+  useFrame((_, delta) => {
+    mixer?.update(delta);
+  });
+
+  return (
+    <group ref={groupRef} position={[0, AVATAR_HEIGHT_OFFSET, 0]}> 
+      <primitive object={clonedScene} />
+    </group>
+  );
+}
 
 function PlayerController() {
   const bodyRef = useRef<RapierRigidBody>(null);
+  const avatarRef = useRef<Group>(null);
   const vaultCooldown = useRef(0);
   const jumpRequest = useRef(false);
+  const movementStateRef = useRef<MovementState>('idle');
+  const [movementState, setMovementState] = useState<MovementState>('idle');
   const { camera } = useThree();
   const { rapier, world } = useRapier();
   const [subscribeKeys, getKeys] = useKeyboardControls<ControlName>();
@@ -98,6 +236,11 @@ function PlayerController() {
 
     body.setLinvel({ x: desiredVelocity.x, y: linvel.y, z: desiredVelocity.z }, true);
 
+    if (avatarRef.current && moveVector.lengthSq() > 0.01) {
+      const targetAngle = Math.atan2(desiredVelocity.x, desiredVelocity.z);
+      avatarRef.current.rotation.y = targetAngle;
+    }
+
     // Ground detection via ray cast slightly below the player.
     const baseY = translation.y - (HALF_HEIGHT + RADIUS);
     const rayOrigin = {
@@ -124,6 +267,21 @@ function PlayerController() {
 
     if (!getKeys().jump) {
       jumpRequest.current = false;
+    }
+
+    const updatedLinvel = body.linvel();
+    const horizontalSpeed = Math.hypot(updatedLinvel.x, updatedLinvel.z);
+    let nextState: MovementState = 'idle';
+
+    if (!isGrounded) {
+      nextState = 'jump';
+    } else if (horizontalSpeed > 0.1) {
+      nextState = 'run';
+    }
+
+    if (movementStateRef.current !== nextState) {
+      movementStateRef.current = nextState;
+      setMovementState(nextState);
     }
 
     // Simple vault mechanic: check forward for low obstacle.
@@ -181,6 +339,7 @@ function PlayerController() {
       angularDamping={1}
     >
       <CapsuleCollider args={[HALF_HEIGHT, RADIUS]} />
+      <PlayerAvatar movementState={movementState} groupRef={avatarRef} />
     </RigidBody>
   );
 }
@@ -202,5 +361,7 @@ export function Player() {
     </KeyboardControls>
   );
 }
+
+useGLTF.preload('/models/andrew.glb');
 
 export default Player;
