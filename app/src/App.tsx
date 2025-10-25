@@ -1,8 +1,9 @@
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Physics } from '@react-three/rapier';
 import './App.css';
 import Office from './content/Office';
 import useYeller from './game/useYeller';
+import Player from './game/Player';
 
 export default function App() {
   const { isSupported, muted, toggleMute } = useYeller();
@@ -11,10 +12,8 @@ export default function App() {
     <div className="app">
       <div className="overlay">
         <h1>Cybersecurity Parkour Sandbox</h1>
-        <p>
-          Use your mouse or trackpad to orbit the camera, then click inside the scene to take
-          control.
-        </p>
+        <p>Click inside the scene to take control of the agent.</p>
+        <p>WASD to move, Shift to run, Space to jump.</p>
         <div className="overlay-controls">
           {isSupported ? (
             <button
@@ -30,10 +29,12 @@ export default function App() {
           )}
         </div>
       </div>
-      <Canvas camera={{ position: [20, 22, 20], fov: 45 }} shadows>
-        <color attach="background" args={[0.04, 0.05, 0.07]} />
-        <Office />
-        <OrbitControls maxPolarAngle={Math.PI / 2.1} />
+      <Canvas camera={{ position: [0, 1.7, 6], fov: 60 }} shadows>
+        <color attach="background" args={['#0a0d12']} />
+        <Physics gravity={[0, -9.81, 0]}>
+          <Office />
+          <Player />
+        </Physics>
       </Canvas>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   KeyboardControls,
   PointerLockControls,
@@ -33,6 +33,7 @@ type ControlName =
   | 'run'
   | 'jump';
 
+const MODEL_URL = '/models/andrew.glb';
 const HALF_HEIGHT = 0.6;
 const RADIUS = 0.3;
 const WALK_SPEED = 4.25;
@@ -48,13 +49,12 @@ const IDLE_CLIP_NAMES = ['Idle', 'idle', 'Armature|Idle', 'Armature|mixamo.com|L
 const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'Jog', 'Armature|Run'];
 const JUMP_CLIP_NAMES = ['Jump', 'jump', 'Armature|Jump'];
 
-type PlayerAvatarProps = {
+type PlayerAvatarModelProps = {
   movementState: MovementState;
-  groupRef: MutableRefObject<Group | null>;
 };
 
-function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
-  const { scene, animations } = useGLTF('/models/andrew.glb');
+function PlayerAvatarModel({ movementState }: PlayerAvatarModelProps) {
+  const { scene, animations } = useGLTF(MODEL_URL);
   const clonedScene = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions, mixer } = useAnimations(animations, clonedScene);
   const currentAction = useRef<AnimationAction | null>(null);
@@ -155,9 +155,73 @@ function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
     mixer?.update(delta);
   });
 
+  return <primitive object={clonedScene} />;
+}
+
+type PlayerAvatarProps = {
+  movementState: MovementState;
+  groupRef: MutableRefObject<Group | null>;
+};
+
+function AvatarFallback() {
   return (
-    <group ref={groupRef} position={[0, AVATAR_HEIGHT_OFFSET, 0]}> 
-      <primitive object={clonedScene} />
+    <group>
+      <mesh castShadow>
+        <capsuleGeometry args={[RADIUS * 0.85, HALF_HEIGHT * 1.4, 8, 16]} />
+        <meshStandardMaterial color="#9ca3af" />
+      </mesh>
+    </group>
+  );
+}
+
+function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
+  const [modelAvailable, setModelAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (typeof window === 'undefined') {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    fetch(MODEL_URL, { method: 'HEAD' })
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (response.ok) {
+          setModelAvailable(true);
+          useGLTF.preload(MODEL_URL);
+        } else {
+          setModelAvailable(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setModelAvailable(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const content =
+    modelAvailable === true ? (
+      <Suspense fallback={<AvatarFallback />}>
+        <PlayerAvatarModel movementState={movementState} />
+      </Suspense>
+    ) : (
+      <AvatarFallback />
+    );
+
+  return (
+    <group ref={groupRef} position={[0, AVATAR_HEIGHT_OFFSET, 0]}>
+      {content}
     </group>
   );
 }
@@ -361,7 +425,5 @@ export function Player() {
     </KeyboardControls>
   );
 }
-
-useGLTF.preload('/models/andrew.glb');
 
 export default Player;

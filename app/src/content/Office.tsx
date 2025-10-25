@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef } from 'react';
 import { Object3D, InstancedMesh } from 'three';
-import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
+import { RigidBody, CuboidCollider } from '@react-three/rapier';
 
 // Tweaking the counts and spacing is centralized here so scene scale changes stay predictable.
 const DESK_COLUMNS = 20; // Increase/decrease for more desks across the X axis.
@@ -150,12 +150,12 @@ function Lighting() {
 
 function OfficeScene() {
   return (
-    <Physics gravity={[0, -9.81, 0]}>
+    <>
       <Lighting />
       <Ground />
       <Obstacles />
       <Desks />
-    </Physics>
+    </>
   );
 }
 
