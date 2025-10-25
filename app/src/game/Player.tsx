@@ -22,6 +22,7 @@ import {
   type Object3D,
 } from 'three';
 import { SkeletonUtils } from 'three-stdlib';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 type MovementState = 'idle' | 'run' | 'jump';
 
@@ -33,7 +34,7 @@ type ControlName =
   | 'run'
   | 'jump';
 
-const MODEL_URL = '/models/andrew.glb';
+const MODEL_URL = new URL('models/andrew.glb', import.meta.env.BASE_URL).toString();
 const HALF_HEIGHT = 0.6;
 const RADIUS = 0.3;
 const WALK_SPEED = 4.25;
@@ -175,35 +176,34 @@ function AvatarFallback() {
 }
 
 function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
-  const [modelAvailable, setModelAvailable] = useState<boolean | null>(null);
+  const [modelStatus, setModelStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   useEffect(() => {
-    let isMounted = true;
-
     if (typeof window === 'undefined') {
-      return () => {
-        isMounted = false;
-      };
+      return;
     }
 
-    fetch(MODEL_URL, { method: 'HEAD' })
-      .then((response) => {
+    let isMounted = true;
+    setModelStatus('loading');
+    const loader = new GLTFLoader();
+
+    loader.load(
+      MODEL_URL,
+      () => {
         if (!isMounted) {
           return;
         }
 
-        if (response.ok) {
-          setModelAvailable(true);
-          useGLTF.preload(MODEL_URL);
-        } else {
-          setModelAvailable(false);
-        }
-      })
-      .catch(() => {
+        setModelStatus('ready');
+        useGLTF.preload(MODEL_URL);
+      },
+      undefined,
+      () => {
         if (isMounted) {
-          setModelAvailable(false);
+          setModelStatus('error');
         }
-      });
+      },
+    );
 
     return () => {
       isMounted = false;
@@ -211,7 +211,7 @@ function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
   }, []);
 
   const content =
-    modelAvailable === true ? (
+    modelStatus === 'ready' ? (
       <Suspense fallback={<AvatarFallback />}>
         <PlayerAvatarModel movementState={movementState} />
       </Suspense>
