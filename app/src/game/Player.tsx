@@ -1,9 +1,8 @@
-import { Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   KeyboardControls,
   PointerLockControls,
   useAnimations,
-  useGLTF,
   useKeyboardControls,
 } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -22,7 +21,7 @@ import {
   type Object3D,
 } from 'three';
 import { SkeletonUtils } from 'three-stdlib';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 type MovementState = 'idle' | 'run' | 'jump';
 
@@ -34,7 +33,8 @@ type ControlName =
   | 'run'
   | 'jump';
 
-const MODEL_URL = new URL('models/andrew.glb', import.meta.env.BASE_URL).toString();
+const MODEL_URL = `${import.meta.env.BASE_URL}models/andrew.glb`;
+const GLB_MAGIC = 0x46546c67;
 const HALF_HEIGHT = 0.6;
 const RADIUS = 0.3;
 const WALK_SPEED = 4.25;
@@ -51,11 +51,12 @@ const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'Jog', 'Armature|Run'];
 const JUMP_CLIP_NAMES = ['Jump', 'jump', 'Armature|Jump'];
 
 type PlayerAvatarModelProps = {
+  gltf: GLTF;
   movementState: MovementState;
 };
 
-function PlayerAvatarModel({ movementState }: PlayerAvatarModelProps) {
-  const { scene, animations } = useGLTF(MODEL_URL);
+function PlayerAvatarModel({ gltf, movementState }: PlayerAvatarModelProps) {
+  const { scene, animations } = gltf;
   const clonedScene = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions, mixer } = useAnimations(animations, clonedScene);
   const currentAction = useRef<AnimationAction | null>(null);
@@ -176,48 +177,52 @@ function AvatarFallback() {
 }
 
 function PlayerAvatar({ movementState, groupRef }: PlayerAvatarProps) {
-  const [modelStatus, setModelStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [model, setModel] = useState<GLTF | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    let isMounted = true;
-    setModelStatus('loading');
-    const loader = new GLTFLoader();
+    const abortController = new AbortController();
 
-    loader.load(
-      MODEL_URL,
-      () => {
-        if (!isMounted) {
-          return;
+    async function loadModel() {
+      try {
+        const response = await fetch(MODEL_URL, { signal: abortController.signal });
+        if (!response.ok) {
+          throw new Error(`Avatar request failed with status ${response.status}`);
         }
 
-        setModelStatus('ready');
-        useGLTF.preload(MODEL_URL);
-      },
-      undefined,
-      () => {
-        if (isMounted) {
-          setModelStatus('error');
+        const data = await response.arrayBuffer();
+        if (data.byteLength < 12 || new DataView(data).getUint32(0, true) !== GLB_MAGIC) {
+          throw new Error('Avatar response is not a valid binary GLB');
         }
-      },
-    );
+
+        const resourcePath = MODEL_URL.slice(0, MODEL_URL.lastIndexOf('/') + 1);
+        const gltf = await new GLTFLoader().parseAsync(data, resourcePath);
+        if (!abortController.signal.aborted) {
+          setModel(gltf);
+        }
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.warn('Unable to load player avatar; using fallback capsule.', error);
+          setModel(null);
+        }
+      }
+    }
+
+    void loadModel();
 
     return () => {
-      isMounted = false;
+      abortController.abort();
     };
   }, []);
 
-  const content =
-    modelStatus === 'ready' ? (
-      <Suspense fallback={<AvatarFallback />}>
-        <PlayerAvatarModel movementState={movementState} />
-      </Suspense>
-    ) : (
-      <AvatarFallback />
-    );
+  const content = model ? (
+    <PlayerAvatarModel gltf={model} movementState={movementState} />
+  ) : (
+    <AvatarFallback />
+  );
 
   return (
     <group ref={groupRef} position={[0, AVATAR_HEIGHT_OFFSET, 0]}>
