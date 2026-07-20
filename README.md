@@ -30,7 +30,7 @@ All commands should be executed from the [`app/`](app/) directory:
 Merges to the `main` branch trigger a GitHub Actions workflow that builds the Vite project and publishes the resulting static site to the `gh-pages` branch. Once configured in the repository settings, the site is available at:
 
 ```
-https://<github-username>.github.io/cybersecurity-parkour/
+https://da3daluscode.github.io/cybersecurity-parkour/
 ```
 
 Because the build is served from a sub-path on GitHub Pages, the Vite base path is set to `/cybersecurity-parkour/` to ensure all assets load correctly when visiting the published site.
