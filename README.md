@@ -1,13 +1,10 @@
-# Cybersecurity Parkour App
+# Ghostline: Cybersecurity Parkour
 
-This repository contains a Vite + React + TypeScript prototype located in [`app/`](app/).
+Ghostline is a self-contained neon parkour game built with React Three Fiber and Rapier. Sprint through a compromised security operations center, chain movement techniques, collect encrypted data packets, sync four route gates, and reach exfil for a final score and rank.
 
-## Prerequisites
+## Play locally
 
-- Node.js 18+
-- npm 9+
-
-## Getting started
+Requirements: Node.js 18+ and npm 9+.
 
 ```bash
 cd app
@@ -15,22 +12,43 @@ npm install
 npm run dev
 ```
 
-The development server listens on [http://localhost:5173](http://localhost:5173) by default and serves a blank React Three Fiber scene with ambient and directional lighting plus an instruction overlay.
+Open the URL Vite prints (normally `http://localhost:5173/cybersecurity-parkour/`). Click **Jack In** or press **Enter** to start. Pointer lock provides mouse-look; keyboard-only play remains available when the browser does not support it.
 
-## Project scripts
+## Controls
 
-All commands should be executed from the [`app/`](app/) directory:
+| Input | Action |
+| --- | --- |
+| `WASD` / arrow keys | Move |
+| Mouse | Look |
+| `Shift` | Sprint |
+| `Space` | Jump; release early for a shorter jump |
+| `Ctrl` or `C` | Slide while moving |
+| `E` | Packet dash |
+| `Esc` | Release the cursor / pause |
 
-- `npm run dev` – Start the local development server.
-- `npm run build` – Type-check the project and generate the production build into `dist/`.
-- `npm run preview` – Preview the production build locally after running the build step.
+Low obstacles are vaulted automatically when approached with momentum. Cyan and magenta floor plates provide directional boosts.
 
-## GitHub Pages deployment
+## Highlights
 
-Merges to the `main` branch trigger a GitHub Actions workflow that builds the Vite project and publishes the resulting static site to the `gh-pages` branch. Once configured in the repository settings, the site is available at:
+- Authored five-stage route with vault blocks, ramps, staggered platforms, a raised firewall gauntlet, descent sequence, and exfil portal.
+- Acceleration-based ground movement, air control, slope projection, coyote time, jump buffering, variable jump height, sliding, dashing, auto-vaulting, boost impulses, and fall respawns.
+- Third-person procedural cyber-runner with state-driven limb animation, chase-camera collision, speed FOV, head bob, landing kick, and impact shake.
+- Procedural neon SOC environment with instanced servers and cubicles, circuit traces, animated security sweeps, checkpoint gates, data shards, and a constrained lighting/shadow rig.
+- Timed run state, sequential checkpoints, collectible scoring, combo multipliers, movement telemetry, finish ranks, responsive HUD, reduced-motion support, and opt-in voice comms.
+- No downloaded models, textures, fonts, or media assets are required at runtime.
 
-```
+## Scripts
+
+Run these from `app/`:
+
+- `npm run dev` — start the Vite development server.
+- `npm run build` — type-check and create the production build in `app/dist/`.
+- `npm run preview` — serve the production build locally.
+
+## Deployment
+
+Pushes to `main` trigger the GitHub Pages workflow. Vite uses the `/cybersecurity-parkour/` base path, so the production URL is:
+
+```text
 https://da3daluscode.github.io/cybersecurity-parkour/
 ```
-
-Because the build is served from a sub-path on GitHub Pages, the Vite base path is set to `/cybersecurity-parkour/` to ensure all assets load correctly when visiting the published site.

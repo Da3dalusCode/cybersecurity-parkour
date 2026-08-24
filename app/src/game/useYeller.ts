@@ -1,122 +1,85 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-const MIN_INTERVAL_MS = 2000;
-const MAX_INTERVAL_MS = 3000;
+const FIRST_CALLOUT_DELAY_MS = 5500;
+const MIN_INTERVAL_MS = 14000;
+const MAX_INTERVAL_MS = 22000;
+
+const CALLOUTS = [
+  'Threat vector mapped. Keep moving.',
+  'Cipher route stable. Maintain momentum.',
+  'Packet channel open. Secure the data.',
+  'Trace pressure rising. Find the next gate.',
+  'Firewall adapting. Change your line.',
+  'Uplink signal locked. Route is live.',
+] as const;
 
 const getRandomDelay = () =>
   Math.floor(Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS + 1)) + MIN_INTERVAL_MS;
 
 export function useYeller() {
-  const [muted, setMuted] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasStartedRef = useRef(false);
-  const isSpeechSupportedRef = useRef(
-    typeof window !== 'undefined' &&
+  const [muted, setMuted] = useState(true);
+  const [isGameActive, setIsGameActive] = useState(false);
+  const [isSupported] = useState(
+    () =>
+      typeof window !== 'undefined' &&
       'speechSynthesis' in window &&
       typeof SpeechSynthesisUtterance !== 'undefined',
   );
 
-  const isSpeechSupported = isSpeechSupportedRef.current;
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  const cancelQueuedSpeech = useCallback(() => {
-    if (isSpeechSupported) {
-      window.speechSynthesis.cancel();
-    }
-  }, [isSpeechSupported]);
+  const cancelSpeech = useCallback(() => {
+    if (isSupported) window.speechSynthesis.cancel();
+  }, [isSupported]);
 
   const speak = useCallback(() => {
-    if (!isSpeechSupported) {
-      return;
-    }
+    if (!isSupported) return;
 
-    const utterance = new SpeechSynthesisUtterance('Cybersecurity!');
+    const line = CALLOUTS[Math.floor(Math.random() * CALLOUTS.length)];
+    const utterance = new SpeechSynthesisUtterance(line);
+    utterance.rate = 0.94;
+    utterance.pitch = 0.82;
+    utterance.volume = 0.58;
     window.speechSynthesis.speak(utterance);
-  }, [isSpeechSupported]);
-
-  const scheduleNext = useCallback(() => {
-    if (!isSpeechSupported || muted) {
-      return;
-    }
-
-    clearTimer();
-
-    const delay = getRandomDelay();
-    timerRef.current = setTimeout(() => {
-      speak();
-      scheduleNext();
-    }, delay);
-  }, [clearTimer, isSpeechSupported, muted, speak]);
-
-  const stop = useCallback(() => {
-    clearTimer();
-    cancelQueuedSpeech();
-  }, [cancelQueuedSpeech, clearTimer]);
-
-  const start = useCallback(() => {
-    if (!isSpeechSupported || muted) {
-      return;
-    }
-
-    speak();
-    scheduleNext();
-  }, [isSpeechSupported, muted, scheduleNext, speak]);
-
-  const handlePointerLock = useCallback(() => {
-    if (hasStartedRef.current) {
-      return;
-    }
-
-    hasStartedRef.current = true;
-    start();
-  }, [start]);
+  }, [isSupported]);
 
   useEffect(() => {
-    if (muted) {
-      stop();
-    } else if (hasStartedRef.current && timerRef.current === null) {
-      scheduleNext();
-    }
-  }, [muted, scheduleNext, stop]);
+    if (typeof document === 'undefined') return undefined;
 
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-
-    const onPointerLockChange = () => {
-      if (document.pointerLockElement) {
-        handlePointerLock();
-      }
-    };
-
-    document.addEventListener('pointerlockchange', onPointerLockChange);
-
-    if (document.pointerLockElement) {
-      handlePointerLock();
-    }
-
-    return () => {
-      document.removeEventListener('pointerlockchange', onPointerLockChange);
-    };
-  }, [handlePointerLock]);
-
-  useEffect(() => () => {
-    stop();
-  }, [stop]);
-
-  const toggleMute = useCallback(() => {
-    setMuted((value) => !value);
+    const handlePointerLock = () => setIsGameActive(Boolean(document.pointerLockElement));
+    document.addEventListener('pointerlockchange', handlePointerLock);
+    handlePointerLock();
+    return () => document.removeEventListener('pointerlockchange', handlePointerLock);
   }, []);
 
+  useEffect(() => {
+    if (!isSupported || muted || !isGameActive) {
+      cancelSpeech();
+      return undefined;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const schedule = (delay: number) => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        speak();
+        schedule(getRandomDelay());
+      }, delay);
+    };
+
+    schedule(FIRST_CALLOUT_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      cancelSpeech();
+    };
+  }, [cancelSpeech, isGameActive, isSupported, muted, speak]);
+
+  const toggleMute = useCallback(() => setMuted((value) => !value), []);
+
   return {
-    isSupported: isSpeechSupported,
+    isSupported,
     muted,
     toggleMute,
   };
